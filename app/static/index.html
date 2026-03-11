@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ASL Sign Language Detector</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: #0f0f0f;
+    color: #ffffff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  h1 {
+    margin: 28px 0 6px;
+    font-size: 1.8rem;
+    color: #ffffff;
+  }
+  .subtitle { color: #888; font-size: .9rem; margin-bottom: 22px; }
+
+  /* ── Layout ───────────────────────────── */
+  .container {
+    width: 100%;
+    max-width: 960px;
+    padding: 0 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── Source selector ──────────────────── */
+  .source-tabs {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+  .source-tabs button {
+    padding: 8px 22px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #1a1a1a;
+    color: #ccc;
+    cursor: pointer;
+    font-size: .9rem;
+    transition: all .2s;
+  }
+  .source-tabs button.active,
+  .source-tabs button:hover {
+    background: #3b82f6;
+    color: #fff;
+    border-color: #3b82f6;
+  }
+
+  /* ── Cards ────────────────────────────── */
+  .card {
+    background: #181818;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  /* ── Camera / Upload panels ───────────── */
+  .panel { display: none; }
+  .panel.visible { display: block; }
+
+  video, #preview, #result-img {
+    width: 100%;
+    max-height: 480px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #111;
+  }
+
+  #cam-canvas { display: none; }
+
+  .cam-wrapper {
+    position: relative;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #111;
+  }
+  .cam-wrapper video {
+    display: block;
+    width: 100%;
+    max-height: 480px;
+    object-fit: contain;
+  }
+  .cam-wrapper #cam-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* ── Buttons ──────────────────────────── */
+  .btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: .95rem;
+    cursor: pointer;
+    transition: background .2s;
+    font-weight: 500;
+  }
+  .btn-primary { background: #3b82f6; color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .btn-green  { background: #22c55e; color: #000; }
+  .btn-green:hover { background: #16a34a; }
+  .btn-red    { background: #ef4444; color: #fff; }
+  .btn-red:hover { background: #dc2626; }
+  .btn-ghost  { background: transparent; color: #aaa; border: 1px solid #333; }
+  .btn-ghost:hover { background: #222; }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Upload area ──────────────────────── */
+  .upload-area {
+    border: 2px dashed #333;
+    border-radius: 10px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s;
+    position: relative;
+  }
+  .upload-area:hover, .upload-area.dragover {
+    border-color: #3b82f6;
+  }
+  .upload-area input { display: none; }
+  .upload-area p { color: #888; }
+  .upload-area .icon { font-size: 2.4rem; margin-bottom: 8px; }
+
+  /* ── Result ───────────────────────────── */
+  .result-section { display: none; }
+  .result-section.visible { display: block; }
+
+  .predictions-list {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .pred-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: .85rem;
+  }
+  .pred-chip .letter {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #6ee7b7;
+  }
+  .pred-chip .score { color: #888; }
+
+  /* ── Spinner ──────────────────────────── */
+  .spinner {
+    display: none;
+    justify-content: center;
+    padding: 20px;
+  }
+  .spinner.visible { display: flex; }
+  .spinner::after {
+    content: '';
+    width: 36px; height: 36px;
+    border: 3px solid #333;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Responsive ───────────────────────── */
+  @media (max-width: 600px) {
+    h1 { font-size: 1.3rem; }
+    .card { padding: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>ASL Sign Language Detector</h1>
+<p class="subtitle">Upload an image or use your camera to detect ASL alphabet signs</p>
+
+<div class="container">
+
+  <!-- Source Tabs -->
+  <div class="source-tabs">
+    <button id="tab-upload" class="active" onclick="switchTab('upload')">Upload Image</button>
+    <button id="tab-camera" onclick="switchTab('camera')">Use Camera</button>
+  </div>
+
+  <!-- Upload Panel -->
+  <div id="panel-upload" class="card panel visible">
+    <div class="upload-area" id="drop-area" onclick="document.getElementById('file-input').click()">
+      <div class="icon">&#128247;</div>
+      <p>Click or drag &amp; drop an image here</p>
+      <input type="file" id="file-input" accept="image/*" />
+    </div>
+    <img id="preview" style="display:none; margin-top:14px;" />
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-predict-upload" disabled onclick="predictUpload()">Detect Signs</button>
+    </div>
+  </div>
+
+  <!-- Camera Panel -->
+  <div id="panel-camera" class="card panel">
+    <div class="cam-wrapper">
+      <video id="cam-video" autoplay playsinline></video>
+      <canvas id="cam-overlay"></canvas>
+    </div>
+    <canvas id="cam-canvas"></canvas>
+    <div class="predictions-list" id="cam-predictions"></div>
+    <div class="btn-row">
+      <button class="btn btn-green" id="btn-start-cam" onclick="startCamera()">Start Camera</button>
+      <button class="btn btn-red" id="btn-stop-cam" disabled onclick="stopCamera()">Stop Camera</button>
+    </div>
+  </div>
+
+  <!-- Spinner -->
+  <div class="spinner" id="spinner"></div>
+
+  <!-- Results -->
+  <div class="result-section" id="result-section">
+    <div class="card">
+      <h3 style="margin-bottom:10px;">Detection Result</h3>
+      <img id="result-img" />
+      <div class="predictions-list" id="predictions-list"></div>
+    </div>
+  </div>
+
+
+
+</div>
+
+<script>
+  // ── State ──────────────────────────────
+  let currentFile = null;
+  let cameraStream = null;
+
+  // ── Tab switching ──────────────────────
+  function switchTab(tab) {
+    document.getElementById("tab-upload").classList.toggle("active", tab === "upload");
+    document.getElementById("tab-camera").classList.toggle("active", tab === "camera");
+    document.getElementById("panel-upload").classList.toggle("visible", tab === "upload");
+    document.getElementById("panel-camera").classList.toggle("visible", tab === "camera");
+  }
+
+  // ── File upload handling ───────────────
+  const dropArea  = document.getElementById("drop-area");
+  const fileInput = document.getElementById("file-input");
+  const preview   = document.getElementById("preview");
+
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  ["dragenter", "dragover"].forEach(ev =>
+    dropArea.addEventListener(ev, (e) => { e.preventDefault(); dropArea.classList.add("dragover"); })
+  );
+  ["dragleave", "drop"].forEach(ev =>
+    dropArea.addEventListener(ev, (e) => { e.preventDefault(); dropArea.classList.remove("dragover"); })
+  );
+  dropArea.addEventListener("drop", (e) => {
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(file) {
+    if (!file.type.startsWith("image/")) return;
+    currentFile = file;
+    const url = URL.createObjectURL(file);
+    preview.src = url;
+    preview.style.display = "block";
+    document.getElementById("btn-predict-upload").disabled = false;
+  }
+
+  // ── Predict (upload) ──────────────────
+  async function predictUpload() {
+    if (!currentFile) return;
+    const formData = new FormData();
+    formData.append("file", currentFile);
+    await sendPrediction(formData);
+  }
+
+  // ── Camera (live inference) ────────────
+  let liveRunning = false;
+  let inferencing = false;
+
+  async function startCamera() {
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 640 } }
+      });
+      const video = document.getElementById("cam-video");
+      video.srcObject = cameraStream;
+      document.getElementById("btn-stop-cam").disabled = false;
+      document.getElementById("btn-start-cam").disabled = true;
+      liveRunning = true;
+      liveLoop();
+    } catch (err) {
+      alert("Camera access denied or unavailable: " + err.message);
+    }
+  }
+
+  function stopCamera() {
+    liveRunning = false;
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(t => t.stop());
+      cameraStream = null;
+    }
+    document.getElementById("cam-video").srcObject = null;
+    document.getElementById("btn-stop-cam").disabled = true;
+    document.getElementById("btn-start-cam").disabled = false;
+    // Clear overlay
+    const overlay = document.getElementById("cam-overlay");
+    overlay.getContext("2d").clearRect(0, 0, overlay.width, overlay.height);
+    document.getElementById("cam-predictions").innerHTML = "";
+  }
+
+  async function liveLoop() {
+    while (liveRunning) {
+      if (!inferencing) {
+        inferencing = true;
+        try { await captureAndInfer(); } catch(_) {}
+        inferencing = false;
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+
+  async function captureAndInfer() {
+    const video  = document.getElementById("cam-video");
+    if (!video.videoWidth) return;
+    const canvas = document.getElementById("cam-canvas");
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+
+    const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.80));
+    const formData = new FormData();
+    formData.append("file", blob, "frame.jpg");
+
+    const res = await fetch("/predict", { method: "POST", body: formData });
+    const data = await res.json();
+
+    drawOverlay(data.predictions, video.videoWidth, video.videoHeight);
+    renderCamChips(data.predictions);
+  }
+
+  function drawOverlay(predictions, srcW, srcH) {
+    const overlay = document.getElementById("cam-overlay");
+    const video   = document.getElementById("cam-video");
+    // Match overlay pixel size to displayed video
+    overlay.width  = video.clientWidth;
+    overlay.height = video.clientHeight;
+    const ctx = overlay.getContext("2d");
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    const sx = overlay.width / srcW;
+    const sy = overlay.height / srcH;
+
+    predictions.forEach(p => {
+      const [x1, y1, x2, y2] = p.box;
+      const dx = x1 * sx, dy = y1 * sy, dw = (x2 - x1) * sx, dh = (y2 - y1) * sy;
+
+      ctx.strokeStyle = "#00ff66";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(dx, dy, dw, dh);
+
+      const text = `${p.label} ${(p.score * 100).toFixed(0)}%`;
+      ctx.font = "bold 16px sans-serif";
+      const tw = ctx.measureText(text).width;
+      ctx.fillStyle = "#00ff66";
+      ctx.fillRect(dx, dy - 22, tw + 8, 22);
+      ctx.fillStyle = "#000";
+      ctx.fillText(text, dx + 4, dy - 5);
+    });
+  }
+
+  function renderCamChips(predictions) {
+    const list = document.getElementById("cam-predictions");
+    list.innerHTML = "";
+    if (!predictions.length) {
+      list.innerHTML = '<span style="color:#888">No signs detected</span>';
+      return;
+    }
+    predictions.forEach(p => {
+      const chip = document.createElement("div");
+      chip.className = "pred-chip";
+      chip.innerHTML = `<span class="letter">${p.label}</span><span class="score">${(p.score * 100).toFixed(1)}%</span>`;
+      list.appendChild(chip);
+    });
+  }
+
+  // ── Common prediction call ─────────────
+  async function sendPrediction(formData) {
+    const spinner = document.getElementById("spinner");
+    const section = document.getElementById("result-section");
+    spinner.classList.add("visible");
+    section.classList.remove("visible");
+
+    try {
+      const res  = await fetch("/predict", { method: "POST", body: formData });
+      const data = await res.json();
+
+      document.getElementById("result-img").src = data.annotated_image;
+      // Render chips
+      const list = document.getElementById("predictions-list");
+      list.innerHTML = "";
+      if (data.predictions.length === 0) {
+        list.innerHTML = '<span style="color:#888">No signs detected</span>';
+      }
+      data.predictions.forEach(p => {
+        const chip = document.createElement("div");
+        chip.className = "pred-chip";
+        chip.innerHTML = `<span class="letter">${p.label}</span><span class="score">${(p.score * 100).toFixed(1)}%</span>`;
+        list.appendChild(chip);
+      });
+
+      section.classList.add("visible");
+    } catch (err) {
+      alert("Prediction failed: " + err.message);
+    } finally {
+      spinner.classList.remove("visible");
+    }
+  }
+
+
+</script>
+</body>
+</html>

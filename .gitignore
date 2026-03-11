@@ -1,0 +1,15 @@
+test
+train
+valid
+data
+model
+final_asl_fasterrcnn.pth
+*/final_asl_fasterrcnn.pth
+*/model/final_asl_fasterrcnn.pth
+/__pycache__
+*/__pycache__
+**/__pycache__
+/__init__.py
+*/__init__.py
+**/__init__.py
+report
